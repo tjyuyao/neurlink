@@ -1,6 +1,7 @@
 from ast import arguments
 import collections
 from copy import copy
+from typing import overload
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -24,13 +25,56 @@ def expand(nndefs):
         yield nndefs
 
 
+class IndexTypeError(Exception): ...
+
+
+class Index:
+
+    def __init__(self, i) -> None:
+        if isinstance(i, Index):
+            self.base = i.base
+            self.offset = i.offset
+        elif isinstance(i, int):
+            self.base = "0"
+            self.offset = i
+        elif isinstance(i, str):
+            self.base = i
+            self.offset = i
+        elif isinstance(i, tuple) and len(i) == 2 and isinstance(i[0], str) and isinstance(i[1], int):
+            self.base = i[0]
+            self.offset = i[1]
+        else:
+            raise IndexTypeError()
+    
+    def __str__(self) -> str:
+        if self.base == "0":
+            return f"neurlink.Index({self.offset})"
+        else:
+            return f"neurlink.Index({self.base}, {self.offset})"
+        
+    def __add__(self, other: "Index"):
+        if isinstance(other, int):
+            return Index((self.base, self.offset + other))
+        elif isinstance(other, Index) and other.base == "0":
+            return Index((self.base, self.offset + other.offset))
+        else:
+            raise IndexTypeError()
+
+
+class IndexRange:
+
+    def __init__(self, start:Index = -1, stop:Index = None):
+        self.start = Index(start)
+        self.stop = (self.start + 1) if stop is None else Index(stop)
+
+
 class Network(nn.Module):
 
     def __init__(self, nndefs) -> None:
         super().__init__()
         nodeseq = []
         modules = {}
-        name2idx = {}
+        name2idx = {"0": 0}
         for idx, nndef in enumerate(expand(nndefs)):
             if isinstance(nndef[-1], partial):
                 p: partial = nndef[-1]
