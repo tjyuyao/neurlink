@@ -1,10 +1,8 @@
 from typing import Optional
-from ._builder import build, transform_function
 from .. import nn
 from ..nn import functional as F
 
 
-@transform_function
 class ConvLayer(nn.Module):
     def __init__(
         self,
@@ -55,7 +53,6 @@ class ConvLayer(nn.Module):
         return x
 
 
-@transform_function
 class MaxPool2d(nn.Module):
     def __init__(
         self,
@@ -108,7 +105,6 @@ class MaxPool2d(nn.Module):
         return x
 
 
-@transform_function
 class AvgPool2d(nn.Module):
     def __init__(
         self,
@@ -153,7 +149,6 @@ class AvgPool2d(nn.Module):
         return x
 
 
-@transform_function
 class BasicBlock(nn.Module):
     def __init__(
         self,
@@ -215,7 +210,6 @@ class BasicBlock(nn.Module):
         return x
 
 
-@transform_function
 class Bottleneck(nn.Module):
 
     expansion = 4
