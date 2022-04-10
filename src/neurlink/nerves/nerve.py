@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 from collections.abc import Sequence
+from typing_extensions import Self
 
 import torch
 
@@ -28,14 +29,13 @@ class Network(torch.nn.Module, Sequence):
                 nerve_object = nerve_builder(self, target_shapes)
                 tag = nerve_object._neurlink_meta_["tag"]
             else:
-                nerve_object = nerve_builder
+                nerve_object = nerve_builder(self, target_shapes)
                 tag = None
 
             tag = tag if tag is not None else str(idx)
-            self.node_sequence.append(target_shapes + [nerve_object])
+            self.node_sequence.append(list(target_shapes) + [nerve_object])
             self.tag2idx[tag] = idx
             modules[tag] = nerve_object
-
         self.module_dict = torch.nn.ModuleDict(modules)
 
     def _get_sequence_item(self, sequence, index):
@@ -47,7 +47,7 @@ class Network(torch.nn.Module, Sequence):
         elif isinstance(index, slice):
             for attrname in ("start", "stop", "step"):
                 attrvalue = getattr(index, attrname)
-                if isinstance(attrname, str):
+                if isinstance(attrvalue, str):
                     setattr(index, attrname, self.tag2idx[attrvalue])
             return sequence[index]
         elif isinstance(index, list):
@@ -71,7 +71,7 @@ class Network(torch.nn.Module, Sequence):
         # forward
         for idx, node in enumerate(self.node_sequence):
             module = node[-1]
-            if module is None or isinstance(module, Placeholder):
+            if module is None or isinstance(module, Required):
                 cache.append(inputs[idx])
             elif isinstance(module, Nerve):
                 cache.append(
@@ -100,19 +100,29 @@ class _NerveRegistry:
             input_selector, tag = -1, None
         elif isinstance(selector, tuple) and len(selector) == 2:
             input_selector, tag = selector
-        elif selector not in input_network:
+        elif isinstance(selector, str) and selector not in input_network:
             input_selector, tag = None, selector
         else:
             input_selector, tag = selector, None
 
         ntypename = f"{cls.__name__}{len(self.registry)}"
 
+        if cls is None or cls is Required:
+            cls = Required
+            input_links = input_network[:]
+        else:
+            input_links = input_network[input_selector]
+
+        def dynamic_subclass_init(self, *args, from_dynamic_subclass=True, **kwds):
+            cls.__init__(self, *args, **kwds)
+
         ntype = type(
             f"_NB.{ntypename}",
             (cls,),
             {
+                "__init__": dynamic_subclass_init,
                 "_neurlink_meta_": dict(
-                    input_links=input_network[input_selector],
+                    input_links=input_links,
                     target_shapes=target_shapes,
                     input_selector=input_selector,
                     tag=tag,
@@ -134,6 +144,12 @@ _NB = _NerveRegistry()
 class Nerve(torch.nn.Module):
     """Base class to support input selection syntax (Typename[slice, name])."""
 
+    def __new__(cls: type[Self], *args, from_dynamic_subclass=False, **kwds) -> Self:  # default option when selector omitted
+        if from_dynamic_subclass:
+            return super().__new__(cls)
+        else:
+            return cls[-1](*args, **kwds)
+
     def __class_getitem__(cls, selector):
         def parameter_keeper(*args, **kwds):  # for user init call
             def nerve_builder(
@@ -142,7 +158,7 @@ class Nerve(torch.nn.Module):
                 nerve_dynamic_class = _NB.register(
                     cls, input_network, selector, target_shapes
                 )
-                nerve_object = nerve_dynamic_class(cls, *args, **kwds)
+                nerve_object = nerve_dynamic_class(*args, from_dynamic_subclass=True, **kwds)
                 return nerve_object
 
             return nerve_builder
@@ -151,20 +167,13 @@ class Nerve(torch.nn.Module):
 
     @property
     def input_links(self):
-        try:
-            return self._neurlink_meta_["input_links"]
-        except:
-            raise SyntaxError(f"{self.__class__.__name__}: Nerve w/o input_selector specified has no input_links attribute.")
+        return self._neurlink_meta_["input_links"]
 
     @property
     def target_shapes(self):
-        try:
-            return self._neurlink_meta_["target_shapes"]
-        except:
-            raise SyntaxError(f"{self.__class__.__name__}: Nerve w/o input_selector specified has no target_shapes attribute.")
+        return self._neurlink_meta_["target_shapes"]
 
-
-class Placeholder(Nerve):
+class Required(Nerve):
     """Effectively do nothing."""
 
     pass
@@ -179,7 +188,7 @@ class Select(Nerve):
         return x[self.index]
 
 
-def test_nerve_spawn():
+def _nerve_spawn():
 
     cfg = Select[1]("p1")
     m = cfg("full_input_links")

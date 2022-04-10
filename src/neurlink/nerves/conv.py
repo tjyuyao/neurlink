@@ -14,7 +14,7 @@ class Conv2d(Nerve):
     ):
         super().__init__()
 
-        in_channels, in_scale = self.input_links[:2]
+        in_channels, in_scale = self.input_links[0]
         out_channels, out_scale = self.target_shapes[0]
         if out_scale:
             stride = out_scale // in_scale
@@ -42,5 +42,3 @@ class Conv2d(Nerve):
         x = self.norm(x)
         x = self.act(x)
         return x
-
-
