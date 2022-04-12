@@ -2,9 +2,16 @@ import torch
 import pytest
 from neurlink.nerves.nerve import *
 
-def test_getmeta_default():
+def test_meta_funcs():
     x = type("X", (object, ), {})
     assert NEURLINK_META_NOT_FOUND is getmeta(x, "dummy_key")
+    setmeta(x, "dummy_key", "dummy_value")
+    assert "dummy_value" == getmeta(x, "dummy_key")
+    setmetadefault(x, "dummy_key", "dropped_value")
+    assert "dummy_value" == getmeta(x, "dummy_key")
+    setmetadefault(x, "new_key", "default_value")
+    assert "default_value" == getmeta(x, "new_key")
+
 
 def test_selectors():
     class Dummy(Nerve):
@@ -24,10 +31,13 @@ def test_selectors():
         ((4, 1), Input()),
         ((5, 1), Input["x5"]()),
         ((0, 1), Dummy([((5, 1),)])),  # select last tensor by default
-        ((0, 1), Dummy[-2]([((5, 1),)])),
+        ((0, 1), Dummy[-1]([((0, 1),)])),
+        ((0, 1), Dummy[None]([])),
+        ((11, 1), Dummy[-4, "d1"]([((5, 1),)])),
         ((0, 1), Dummy[2:4]([((3, 1),), ((4, 1),)])),
         ((0, 1), Dummy["x3"]([((3, 1),),])),
         ((0, 1), Dummy["x3":"x5"]([((3, 1),), ((4, 1),)])),
+        ((0, 1), Dummy["d1"]([((11, 1),)])),
     ])
 
     x = [

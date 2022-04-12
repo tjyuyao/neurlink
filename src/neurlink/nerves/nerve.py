@@ -50,7 +50,7 @@ class _NerveRegistry:
         """produces a pickable dynamic subclass of `cls` born with meta-info available during __init__."""
 
         if selector is None:
-            input_selector, tag = -1, None
+            input_selector, tag = None, None
         elif isinstance(selector, tuple) and len(selector) == 2:
             input_selector, tag = selector
         elif isinstance(selector, str) and selector not in container_nerve:
@@ -64,10 +64,7 @@ class _NerveRegistry:
             cls = Input
             input_links = None
         else:
-            try:
-                input_links = container_nerve[input_selector]
-            except:
-                breakpoint()
+            input_links = container_nerve[input_selector]
 
         def dynamic_subclass_init(self, *args, _Nerve__finalized, **kwds):
             assert _Nerve__finalized is True
@@ -264,7 +261,9 @@ class Nerve(torch.nn.Module):
 
     def _get_sequence_item(self, sequence, index):
         """impl. of `sequence[index]` but allows index to be/contain tagname."""
-        if isinstance(index, int):
+        if index is None:
+            return []
+        elif isinstance(index, int):
             return sequence[index]
         elif isinstance(index, str):
             return sequence[self.tag2idx[index]]
