@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
 from typing import Callable, Tuple
 from typing_extensions import Self
 
@@ -60,12 +59,12 @@ class _NerveRegistry:
 
         if cls is None or cls is Input:
             cls = Input
-            input_links = container_nerve[:]
+            input_links = None
         else:
             input_links = container_nerve[input_selector]
 
-        def dynamic_subclass_init(self, *args, __finalized, **kwds):
-            assert __finalized is True
+        def dynamic_subclass_init(self, *args, _Nerve__finalized, **kwds):
+            assert _Nerve__finalized is True
             cls.__init__(self, *args, **kwds)
 
         ntype = type(
@@ -98,9 +97,9 @@ class Nerve(torch.nn.Module):
     """Base class to support input selection syntax (Typename[slice, name])."""
 
     def __new__(
-        cls: type[Self], *args, __finalized=False, **kwds
+        cls: type[Self], *args, _Nerve__finalized=False, **kwds
     ) -> Self:  # default option when selector omitted
-        if __finalized:
+        if _Nerve__finalized:
             return super().__new__(cls)
         else:
             return cls[-1](*args, **kwds)
@@ -114,9 +113,9 @@ class Nerve(torch.nn.Module):
                     cls, container_nerve, selector, target_shapes
                 )
                 # dynamic class is also a subclass of Nerve,
-                # `__finalized=True` will ensure a real instantiation.
+                # `_Nerve__finalized=True` will ensure a real instantiation.
                 nerve_object = nerve_dynamic_class(
-                    *args, __finalized=True, **kwds
+                    *args, _Nerve__finalized=True, **kwds
                 )
                 return nerve_object
 
@@ -140,7 +139,10 @@ class Nerve(torch.nn.Module):
 
         # retrieve actual modules.
         target_shapes, nerve_builder = nndef[:-1], nndef[-1]
-        if nerve_builder.__name__ == "nerve_builder":
+        if isinstance(nerve_builder, Input):
+            nerve_object  = nerve_builder
+            tag = getmeta(nerve_object, "tag") or tag
+        elif nerve_builder.__name__ == "nerve_builder":
             """
             pass current network and target_shapes of next module to add to nerve_builder.
             The nerve_builder will register a new dynamic class in _NerveRegistry so that
@@ -184,7 +186,7 @@ class Nerve(torch.nn.Module):
         # register each module for later lookup.
         idx = len(self.node_sequence)
         tag = tag if tag is not None else str(idx)
-        self.node_sequence.append(list(target_shapes) + [nerve_object])
+        self.node_sequence.append((*target_shapes, nerve_object))
         self.tag2idx[tag] = idx
         self.module_dict[tag] = nerve_object
         self._ensure_inputs(nerve_object)
@@ -208,6 +210,7 @@ class Nerve(torch.nn.Module):
         Attributes:
             base_input_nerve (Input): the base_shape provider Input.
         """
+
         def __init__(self, nerve:Nerve) -> None:
             if not hasmeta(nerve, "container_nerve"):  # top-level
                 self.base_input_nerve:Input = None
@@ -216,15 +219,7 @@ class Nerve(torch.nn.Module):
                 # reuse global base_shape_input_provider
                 container_nerve:Nerve = getmeta(nerve, "container_nerve")
                 self.base_input_nerve:Input = container_nerve._ensure_inputs.base_input_nerve
-
-                # input propagation through hierarchy
-                input_links = getmeta(nerve, "input_links")
-                if not isinstance(input_links, Sequence):
-                    input_links = [input_links]
-                for input_link in input_links:
-                    target_shapes = input_link[:-1]
-                    nerve.add(tuple(*target_shapes, Input()))
-                
+                assert self.base_input_nerve is not None
                 self.done = True
         
         def __call__(self, sub_nerve):
@@ -244,12 +239,21 @@ class Nerve(torch.nn.Module):
                     self.done = True
                     return
 
-    def __init__(self, *args, __finalized=False, **kwds) -> None:
+    def __init__(self, *args, _Nerve__finalized=False, **kwds) -> None:
         super().__init__()
         self.node_sequence = []
         self.tag2idx = {}
         self.module_dict = torch.nn.ModuleDict()
         self._ensure_inputs = Nerve._EnsureInputBaseShape(self)
+
+        # input propagation through hierarchy
+        if hasmeta(self, "container_nerve"): # sub-level
+            input_links = getmeta(self, "input_links")
+            if not isinstance(input_links, list):
+                input_links = [input_links]
+            for input_link in input_links:
+                target_shapes = input_link[:-1]
+                self.add((*target_shapes, Input()))
 
 
     def _get_sequence_item(self, sequence, index):
@@ -280,7 +284,7 @@ class Nerve(torch.nn.Module):
     def forward(self, inputs):
         # fill inputs into cache
         cache = []
-        if not isinstance(inputs, Sequence):
+        if not isinstance(inputs, list):
             inputs = [inputs]
         # forward
         for idx, node in enumerate(self.node_sequence):
@@ -307,14 +311,21 @@ class Nerve(torch.nn.Module):
         return cache
 
 
-class Input(Nerve):
+class Input(torch.nn.Module):
     """Placeholder that bypasses input sequence elements from container-nerve to sub-nerve."""
+
+    def __class_getitem__(cls, tag):
+        nerve_dynamic_class = _NB.register(
+            cls, container_nerve=[], selector=tag, target_shapes=None
+        )
+        return nerve_dynamic_class
 
     def __init__(self, base_shape:bool=False, example:torch.Tensor=None) -> None:
         super().__init__()
         self.base_shape_flag = base_shape
         self.example = example
         self.shape = None
+        setmetadefault(self, "tag", None)
 
 
 def build(nndefs: list):
@@ -327,7 +338,7 @@ def build(nndefs: list):
             yield nndef
 
     assert isinstance(nndefs, list)
-    network = Nerve(__finalized=True)
+    network = Nerve(_Nerve__finalized=True)
     for nndef in expand_sublist(nndefs):
         network.add(nndef)
     return network
