@@ -6,6 +6,9 @@ from typing_extensions import Self
 import torch
 
 
+class NotEnoughInputError(Exception): ...
+
+
 _NEURLINK_META_KEY_ = "_neurlink_meta_"
 NEURLINK_META_NOT_FOUND = "NEURLINK_META_NOT_FOUND"
 
@@ -61,7 +64,10 @@ class _NerveRegistry:
             cls = Input
             input_links = None
         else:
-            input_links = container_nerve[input_selector]
+            try:
+                input_links = container_nerve[input_selector]
+            except:
+                breakpoint()
 
         def dynamic_subclass_init(self, *args, _Nerve__finalized, **kwds):
             assert _Nerve__finalized is True
@@ -139,10 +145,7 @@ class Nerve(torch.nn.Module):
 
         # retrieve actual modules.
         target_shapes, nerve_builder = nndef[:-1], nndef[-1]
-        if isinstance(nerve_builder, Input):
-            nerve_object  = nerve_builder
-            tag = getmeta(nerve_object, "tag") or tag
-        elif nerve_builder.__name__ == "nerve_builder":
+        if nerve_builder.__name__ == "nerve_builder":
             """
             pass current network and target_shapes of next module to add to nerve_builder.
             The nerve_builder will register a new dynamic class in _NerveRegistry so that
@@ -212,7 +215,10 @@ class Nerve(torch.nn.Module):
         """
 
         def __init__(self, nerve:Nerve) -> None:
-            if not hasmeta(nerve, "container_nerve"):  # top-level
+            if isinstance(nerve, Input):  # Input prohibited base_shape attribute.
+                self.base_input_nerve:Input = None
+                self.done = True
+            elif not hasmeta(nerve, "container_nerve"):  # top-level
                 self.base_input_nerve:Input = None
                 self.done = False
             else:  # sub-level
@@ -263,11 +269,15 @@ class Nerve(torch.nn.Module):
         elif isinstance(index, str):
             return sequence[self.tag2idx[index]]
         elif isinstance(index, slice):
+            args = dict(start=None, stop=None, step=None)
             for attrname in ("start", "stop", "step"):
                 attrvalue = getattr(index, attrname)
                 if isinstance(attrvalue, str):
-                    setattr(index, attrname, self.tag2idx[attrvalue])
-            return sequence[index]
+                    args[attrname] = self.tag2idx[attrvalue]
+                else:
+                    args[attrname] = attrvalue
+            new_index = slice(args["start"], args["stop"], args["step"])
+            return sequence[new_index]
         elif isinstance(index, list):
             return [self._get_sequence_item(sequence, i) for i in index]
         elif isinstance(index, set):
@@ -277,6 +287,15 @@ class Nerve(torch.nn.Module):
 
     def __getitem__(self, index):
         return self._get_sequence_item(self.node_sequence, index)
+    
+    def __contains__(self, index):
+        if isinstance(index, (str, int)):
+            try:
+                self._get_sequence_item(self.node_sequence, index) 
+                return True
+            except KeyError:
+                return False
+        return False
 
     def __len__(self):
         return len(self.node_sequence)
@@ -290,7 +309,10 @@ class Nerve(torch.nn.Module):
         for idx, node in enumerate(self.node_sequence):
             module = node[-1]
             if isinstance(module, Input):
-                output = inputs[idx]
+                try:
+                    output = inputs[idx]
+                except IndexError:
+                    raise NotEnoughInputError(f"while extracting {idx}-th (zero-based) Input.")
                 # populate Input.shape at runtime
                 if module.base_shape_flag:
                     if isinstance(output, torch.Tensor):
@@ -311,22 +333,16 @@ class Nerve(torch.nn.Module):
         return cache
 
 
-class Input(torch.nn.Module):
+class Input(Nerve):
     """Placeholder that bypasses input sequence elements from container-nerve to sub-nerve."""
 
-    def __class_getitem__(cls, tag):
-        nerve_dynamic_class = _NB.register(
-            cls, container_nerve=[], selector=tag, target_shapes=None
-        )
-        return nerve_dynamic_class
-
     def __init__(self, base_shape:bool=False, example:torch.Tensor=None) -> None:
-        super().__init__()
         self.base_shape_flag = base_shape
         self.example = example
         self.shape = None
-        setmetadefault(self, "tag", None)
 
+    @property
+    def base_shape(self) -> None: ...
 
 def build(nndefs: list):
 
