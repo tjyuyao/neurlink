@@ -1,3 +1,4 @@
+import pytest
 import torch
 import neurlink.nerves as nv
 from neurlink.nerves.conv import *
@@ -65,6 +66,14 @@ def test_conv2d_transposed():
     assert x[0].shape == (2, 3, 224, 256)
     assert x[1].shape == (2, 6, 112, 128)
     assert x[2].shape == (2, 8, 224, 256)
+
+def test_conv2d_transposed_nonzero_padding():
+    with pytest.raises(ValueError):
+        nv.build([
+            ((3, 1), nv.Input()),
+            ((6, 2), Conv2d(3)),
+            ((8, 1), ConvTransposed2d(3, padding_mode="reflect")),
+        ])
 
 if __name__ == "__main__":
     test_conv2d_transposed()

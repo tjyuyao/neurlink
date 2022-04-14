@@ -223,6 +223,8 @@ class _ConvNd(_AdaptiveConvNd):
                 raise NotImplementedError(
                     f"nv.ConvNd(spatial_dims={spatial_dims}, transposed={transposed})"
                 )
+            if padding_mode != "zeros":
+                raise ValueError("nv.ConvNd(transposed=True) only supports zero-padding.")
         else:
             if N == 1:
                 self.functional_conv = F.conv1d
