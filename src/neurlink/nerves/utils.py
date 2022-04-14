@@ -1,6 +1,8 @@
 import collections
+from functools import partial
 from itertools import repeat
-from typing import List, Dict, Any
+from typing import Callable, List, Dict, Any
+from typing_extensions import Self
 
 
 def ntuple(n):
@@ -87,3 +89,9 @@ def is_sequence_of(seq, types):
         if not isinstance(x, types):
             return False
     return True
+
+
+class specialize(partial):
+
+    def __getitem__(self, key):
+        return specialize(self.func[key], *self.args, **self.keywords)

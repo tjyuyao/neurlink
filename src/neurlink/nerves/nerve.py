@@ -1,4 +1,5 @@
 from __future__ import annotations
+from copy import copy
 
 import itertools
 from dataclasses import dataclass
@@ -8,7 +9,7 @@ from typing import Callable, Dict, List, Sequence, Tuple
 import torch
 from typing_extensions import Self
 
-from neurlink.nerves.utils import isint
+from neurlink.nerves.utils import is_sequence_of, isint
 
 from .common_types import NeurlinkAssertionError, size_any_t
 
@@ -47,13 +48,14 @@ def setmetadefault(obj, key, default):
 
 
 class Shape:
-
-    def __init__(self, size_tuple: int | Tuple[int, ...] | torch.Size, repeat_times=1) -> None:
+    def __init__(
+        self, size_tuple: int | Tuple[int, ...] | torch.Size, repeat_times=1
+    ) -> None:
         super().__init__()
         if isint(size_tuple):
             size_tuple = tuple(itertools.repeat(int(size_tuple), repeat_times))
         self.size_tuple = size_tuple
-    
+
     def __getitem__(self, index) -> Shape:
         if isinstance(index, int):
             return self.size_tuple[index]
@@ -63,31 +65,76 @@ class Shape:
             return Shape(tuple(self.size_tuple[i] for i in index))
         else:
             raise TypeError(f"index={index}, type(index)={type(index)}")
-    
+
     def numel(self) -> int:
         if isinstance(self.size_tuple, torch.Size):
             return self.size_tuple.numel()
         else:
             return prod(self.size_tuple)
-    
+
     def __len__(self):
         return len(self.size_tuple)
-    
+
+    def __repr__(self) -> str:
+        return f"Shape({self.size_tuple})"
+
+    def __eq__(self, __o: object) -> bool:
+        try:
+            if len(self) != len(__o):
+                return False
+            for s, o in zip(self, __o):
+                if s != o:
+                    return False
+            else:
+                return True
+        except:
+            return False
+
 
 class ShapeSpec:
     def __init__(self, expr) -> None:
-        if isinstance(expr, str):
+        if isinstance(expr, ShapeSpec):
+            other = expr
+            self.expr = copy(other.expr)
+            self.relative = copy(other.relative)
+            self.absolute = copy(other.absolute)
+        elif isinstance(expr, str):
+            self.expr = expr
             self.relative: size_any_t = None
             self.absolute: Shape = Shape(eval(expr))
-        else:
+        elif isinstance(expr, int) or is_sequence_of(expr, int):
+            self.expr = expr
             self.relative: size_any_t = expr
             self.absolute: Shape = None
+        else:
+            raise TypeError(f"ShapeSpec({repr(expr)})")
+
+    def __repr__(self) -> str:
+        return f"ShapeSpec({repr(self.expr)})"
+
+    def __eq__(self, __o: object) -> bool:
+        if isinstance(__o, ShapeSpec):
+            return self.expr == __o.expr
+        else:
+            return self.expr == __o
 
 
 @dataclass
 class DimSpec:
     channels: int
     shape: ShapeSpec
+
+    def __getitem__(self, index):
+        return [self.channels, self.shape][index]
+
+    def __len__(self):
+        return 2
+
+    def __eq__(self, __o: object) -> bool:
+        try:
+            return self[0] == __o[0] and self[1] == ShapeSpec(__o[1])
+        except:
+            return False
 
 
 @dataclass
@@ -315,11 +362,11 @@ class Nerve(torch.nn.Module):
 
         # input propagation through hierarchy
         if hasmeta(self, "container_nerve"):  # sub-level
-            input_links = getmeta(self, "input_links")
+            input_links = self.input_links
             if not isinstance(input_links, list):
                 input_links = [input_links]
             for input_link in input_links:
-                target_dims = input_link[:-1]
+                target_dims = input_link.dims
                 self.add((*target_dims, Input()))
 
     def _get_sequence_item(self, sequence, index):
@@ -369,7 +416,7 @@ class Nerve(torch.nn.Module):
             inputs = [inputs]
         # forward
         for idx, node in enumerate(self.node_sequence):
-            module = node[-1]
+            module = node.nerve
             if isinstance(module, Input):
                 try:
                     output = inputs[idx]
@@ -401,13 +448,19 @@ class Input(Nerve):
     """Placeholder that bypasses input sequence elements from container-nerve to sub-nerve."""
 
     def __init__(self, base_shape: bool = False, example: torch.Tensor = None) -> None:
+        torch.nn.Module.__init__(self)
         self.base_shape_flag = base_shape
         self.example = example
-        self.shape:Shape = None
+        self.shape: Shape = None
 
     @property
     def base_shape(self) -> None:
         ...
+
+    def __str__(self) -> str:
+        tag = getmeta(self, "tag")
+        tag = "" if tag is None else f", {tag}"
+        return f"Input[{getmeta(self, 'input_selector')}{tag}]()"
 
 
 def build(nndefs: list):

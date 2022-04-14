@@ -22,7 +22,7 @@ def test_selectors():
             if not isinstance(input_links, list):
                 input_links = [input_links]
             for link, a in zip(input_links, assumed):
-                assert link[:-1] == a
+                assert link.dims == list(a)
 
     net = build([
         ((1, 1), Input()),
