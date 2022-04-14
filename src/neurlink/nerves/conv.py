@@ -1,6 +1,6 @@
 import math
 import warnings
-from typing import Tuple
+from typing import Tuple, Type
 
 import neurlink.nn as nn
 import neurlink.nn.functional as F
@@ -328,32 +328,32 @@ class _ConvNd(_AdaptiveConvNd):
 
 # fmt: off
 
-Conv1d = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.Identity, act=nn.Identity)
-Conv1dReLU = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.Identity, act=nn.ReLU)
-Conv1dBNReLU = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.BatchNorm1d, act=nn.ReLU, norm_after_act=False)
-Conv1dReLUBN = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.BatchNorm1d, act=nn.ReLU, norm_after_act=True)
+Conv1d:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.Identity, act=nn.Identity)
+Conv1dReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.Identity, act=nn.ReLU)
+Conv1dBNReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.BatchNorm1d, act=nn.ReLU, norm_after_act=False)
+Conv1dReLUBN:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.BatchNorm1d, act=nn.ReLU, norm_after_act=True)
 
-Conv2d = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.Identity, act=nn.Identity)
-Conv2dReLU = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.Identity, act=nn.ReLU)
-Conv2dBNReLU = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=False)
-Conv2dReLUBN = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=True)
+Conv2d:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.Identity, act=nn.Identity)
+Conv2dReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.Identity, act=nn.ReLU)
+Conv2dBNReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=False)
+Conv2dReLUBN:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=True)
 
-Conv3d = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.Identity, act=nn.Identity)
-Conv3dReLU = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.Identity, act=nn.ReLU)
-Conv3dBNReLU = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=False)
-Conv3dReLUBN = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=True)
+Conv3d:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.Identity, act=nn.Identity)
+Conv3dReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.Identity, act=nn.ReLU)
+Conv3dBNReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=False)
+Conv3dReLUBN:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=True)
 
-ConvTransposed1d = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.Identity, act=nn.Identity, transposed=True)
-ConvTransposed1dReLU = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.Identity, act=nn.ReLU, transposed=True)
-ConvTransposed1dBNReLU = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.BatchNorm1d, act=nn.ReLU, norm_after_act=False, transposed=True)
-ConvTransposed1dReLUBN = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.BatchNorm1d, act=nn.ReLU, norm_after_act=True, transposed=True)
+ConvTransposed1d:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.Identity, act=nn.Identity, transposed=True)
+ConvTransposed1dReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.Identity, act=nn.ReLU, transposed=True)
+ConvTransposed1dBNReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.BatchNorm1d, act=nn.ReLU, norm_after_act=False, transposed=True)
+ConvTransposed1dReLUBN:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.BatchNorm1d, act=nn.ReLU, norm_after_act=True, transposed=True)
 
-ConvTransposed2d = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.Identity, act=nn.Identity, transposed=True)
-ConvTransposed2dReLU = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.Identity, act=nn.ReLU, transposed=True)
-ConvTransposed2dBNReLU = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=False, transposed=True)
-ConvTransposed2dReLUBN = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=True, transposed=True)
+ConvTransposed2d:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.Identity, act=nn.Identity, transposed=True)
+ConvTransposed2dReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.Identity, act=nn.ReLU, transposed=True)
+ConvTransposed2dBNReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=False, transposed=True)
+ConvTransposed2dReLUBN:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=True, transposed=True)
 
-ConvTransposed3d = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.Identity, act=nn.Identity, transposed=True)
-ConvTransposed3dReLU = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.Identity, act=nn.ReLU, transposed=True)
-ConvTransposed3dBNReLU = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=False, transposed=True)
-ConvTransposed3dReLUBN = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=True, transposed=True)
+ConvTransposed3d:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.Identity, act=nn.Identity, transposed=True)
+ConvTransposed3dReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.Identity, act=nn.ReLU, transposed=True)
+ConvTransposed3dBNReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=False, transposed=True)
+ConvTransposed3dReLUBN:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=True, transposed=True)
