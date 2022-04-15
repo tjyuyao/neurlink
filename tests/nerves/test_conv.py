@@ -55,7 +55,7 @@ def test_conv2d_downsizing_odd():
     assert x[4].shape == (2, 8, 14+1, 16+1)
     assert x[5].shape == (2, 8, 7+1, 8+1)
 
-def test_conv2d_transposed():
+def test_conv2d_transposed_even():
     net = nv.build([
         ((3, 1), nv.Input()),
         ((6, 2), Conv2d(3)),
@@ -67,6 +67,18 @@ def test_conv2d_transposed():
     assert x[1].shape == (2, 6, 112, 128)
     assert x[2].shape == (2, 8, 224, 256)
 
+def test_conv2d_transposed_odd():
+    net = nv.build([
+        ((3, 1), nv.Input()),
+        ((6, 2), Conv2d(3)),
+        ((8, 1), ConvTransposed2d(3)),
+    ])
+    x = torch.randn((2, 3, 224+1, 256+1))
+    x = net(x)
+    assert x[0].shape == (2, 3, 224+1, 256+1)
+    assert x[1].shape == (2, 6, 112+1, 128+1)
+    assert x[2].shape == (2, 8, 224+1, 256+1)
+
 def test_conv2d_transposed_nonzero_padding():
     with pytest.raises(ValueError):
         nv.build([
@@ -76,4 +88,4 @@ def test_conv2d_transposed_nonzero_padding():
         ])
 
 if __name__ == "__main__":
-    test_conv2d_transposed()
+    test_conv2d_transposed_odd()
