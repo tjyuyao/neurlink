@@ -1,8 +1,8 @@
 import torch.nn as nn
 from ..functional.regularization import drop_path
 
-class DropPath(nn.Module):
 
+class DropPath(nn.Module):
     def __init__(self, p, **kwargs):
         super().__init__()
 

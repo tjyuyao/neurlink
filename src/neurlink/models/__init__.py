@@ -1,2 +1,3 @@
 from .resnet import *
-from .hrnet import *
+
+# from .hrnet import *
