@@ -90,7 +90,7 @@ class Shape:
                 return True
         except:
             return False
-    
+
 
 class ShapeSpec:
     def __init__(self, expr) -> None:
@@ -118,7 +118,7 @@ class ShapeSpec:
             return self.expr == __o.expr
         else:
             return self.expr == __o
-    
+
     def get_absolute(self, base_shape: size_any_t) -> Shape:
         if self.relative:
             down_scales = Shape(self.relative, repeat_times=len(base_shape))
@@ -133,6 +133,7 @@ class ShapeSpec:
     @staticmethod
     def size(base_size, down_scale) -> int:
         return base_size // down_scale + base_size % down_scale
+
 
 @dataclass
 class DimSpec:
@@ -160,8 +161,8 @@ class NerveSpec:
 
     The following specification of "one layer of neural networks" (coined Nerve) in neurlink
     says a 2d convolution layer with kernel (3, 3) will ensure an output tensor of channels 64
-    and shape resolution of (128, 256). The specification line itself is denoted as a `nndef` 
-    line. Note that the input information is specified in previous lines of nndefs and not 
+    and shape resolution of (128, 256). The specification line itself is denoted as a `nndef`
+    line. Note that the input information is specified in previous lines of nndefs and not
     demonstrated here.
 
     ```python
@@ -172,6 +173,7 @@ class NerveSpec:
             ...
     ```
     """
+
     dims: List[DimSpec]
     nerve: Nerve
 
@@ -184,7 +186,7 @@ class _NerveRegistry:
     def register(self, cls, container_nerve: Nerve, selector, target_dims):
         """produces a pickable dynamic subclass of `cls` born with meta-info available during __init__."""
 
-        #input_selector
+        # input_selector
         if selector is None:
             input_selector, tag = None, None
         elif isinstance(selector, tuple) and len(selector) == 2:
@@ -195,7 +197,7 @@ class _NerveRegistry:
             input_selector, tag = selector, None
         else:
             raise NeurlinkAssertionError(f"TypeError(selector={selector})")
-        
+
         if isinstance(input_selector, (int, str)):
             input_selector = [input_selector]
 
@@ -239,7 +241,7 @@ _NB = _NerveRegistry("_NB")
 
 class Nerve(torch.nn.Module):
     """Base class to support input selection syntax (Typename[slice, name]).
-    
+
     Attributes:
         input_links (List[`NerveSpec`]): [i].
         target_dims (List[`DimSpec`]): [i].
@@ -282,7 +284,7 @@ class Nerve(torch.nn.Module):
     @property
     def target_dims(self) -> List[DimSpec]:
         return getmeta(self, "target_dims")
-    
+
     @property
     def output_shapes(self) -> List[Shape]:
         return [t.shape.get_absolute(self.base_shape) for t in self.target_dims]
@@ -505,7 +507,8 @@ class Nerve(torch.nn.Module):
     def __getattr__(self, name: str) -> Union[torch.Tensor, torch.Module]:
         try:
             return super().__getattr__(name)
-        except AttributeError: pass
+        except AttributeError:
+            pass
         msg = f"'{self.__class__.__name__}' object has no attribute '{name}'. "
         if name in ["nerves", "input_links", "taget_dims"]:
             msg += "\n[Nerve] Please make sure call super().__init__() first."

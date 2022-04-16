@@ -6,7 +6,7 @@ from torch import Tensor
 # Template for arguments which can be supplied as a tuple, or which can be a scalar which PyTorch will internally
 # broadcast to a tuple.
 # Comes in several variants: A tuple of unknown size, and a fixed-size tuple for 1d, 2d, or 3d operations.
-T = TypeVar('T')
+T = TypeVar("T")
 scalar_or_tuple_any_t = Union[T, Tuple[T, ...]]
 scalar_or_tuple_1_t = Union[T, Tuple[T]]
 scalar_or_tuple_2_t = Union[T, Tuple[T, T]]
@@ -43,7 +43,11 @@ maybe_indices_t = scalar_or_tuple_2_t[Tensor]
 
 # some common exceptions
 
+
 class NeurlinkAssertionError(Exception):
     def __init__(self, *args: object) -> None:
-        args = ("Please report a bug at https://github.com/tjyuyao/neurlink/issues :", *args)
+        args = (
+            "Please report a bug at https://github.com/tjyuyao/neurlink/issues :",
+            *args,
+        )
         super().__init__(*args)

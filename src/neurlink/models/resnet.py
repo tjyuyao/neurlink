@@ -1,13 +1,10 @@
 import neurlink.nerves as nv
-from neurlink.nerves.nerve import DimSpec
 import neurlink.nn as nn
-import neurlink.nn.functional as F
-import torch
 
 
 class SkipConnect(nv.Nerve):
     """
-        SkipConnect[[from, to]](...)
+    SkipConnect[[from, to]](...)
     """
 
     def __init__(
@@ -22,13 +19,13 @@ class SkipConnect(nv.Nerve):
         dim_to = self.input_links[1].dims[0]
         dim_out = self.target_dims[0]
 
-        assert dim_out == dim_to        
+        assert dim_out == dim_to
 
         if dim_from != dim_to:
             self.add(
                 (dim_to, nv.Conv2d[0](kernel_size, norm=norm, act=act, **conv_keywords))
             )
-        
+
     def forward(self, inputs, output_intermediate=False):
         cache = super().forward(inputs, output_list=True)
         cache.append(cache[-1] + cache[-2])
@@ -89,29 +86,33 @@ class Bottleneck(nv.Nerve):
         out_channels = dim_out.channels
         hid_channels = int(dim_out.channels * width / expansion)
 
+        # fmt: off
         self.add(
             [
-                ((hid_channels, dim_in.shape ), nv.Conv2d(1, act=act, **conv_keywords)),
+                ((hid_channels, dim_in.shape), nv.Conv2d(1, act=act, **conv_keywords)),
                 ((hid_channels, dim_out.shape), nv.Conv2d(3, act=act, **conv_keywords)),
                 ((out_channels, dim_out.shape), nv.Conv2d(1, act=nn.I, **conv_keywords)),
                 ((out_channels, dim_out.shape), SkipConnect[[0, -1]](1, norm=norm)),
                 ((out_channels, dim_out.shape), act(inplace=True)),
             ]
         )
+        # fmt: on
 
 
 def _resnet(block, layers, expansion, num_classes):
-    return nv.build([
-        ((3, 1), nv.Input()),
-        ((64, 2), nv.Conv2d_ReLU_BN(7)),
-        ((64, 4), nv.MaxPool2d(3)),
-        [((64  * expansion, 4), block)] * layers[0],
-        [((128  * expansion, 8), block)] * layers[1],
-        [((256  * expansion, 16), block)] * layers[2],
-        [((512  * expansion, 32), block)] * layers[3],
-        ((512 * expansion, "(1, 1)"), nv.AvgPool2d()),
-        ((num_classes, "(1, 1)"), nv.Conv2d(1)),
-    ])
+    return nv.build(
+        [
+            ((3, 1), nv.Input()),
+            ((64, 2), nv.Conv2d_ReLU_BN(7)),
+            ((64, 4), nv.MaxPool2d(3)),
+            [((64 * expansion, 4), block)] * layers[0],
+            [((128 * expansion, 8), block)] * layers[1],
+            [((256 * expansion, 16), block)] * layers[2],
+            [((512 * expansion, 32), block)] * layers[3],
+            ((512 * expansion, "(1, 1)"), nv.AvgPool2d()),
+            ((num_classes, "(1, 1)"), nv.Conv2d(1)),
+        ]
+    )
 
 
 def resnet18(num_classes: int = 1000, **block_keywords):

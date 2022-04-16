@@ -92,6 +92,5 @@ def is_sequence_of(seq, types):
 
 
 class specialize(partial):
-
     def __getitem__(self, key):
         return specialize(self.func[key], *self.args, **self.keywords)
