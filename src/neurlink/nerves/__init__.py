@@ -1,4 +1,5 @@
 from .nerve import Nerve, Input, build
+from .nerve import getmeta, setmeta, setmetadefault
 from .conv import AdaptiveConvNd
 from .conv import Conv1d, Conv1d_ReLU_BN, Conv1d_BN_ReLU, Conv1d_ReLU
 from .conv import Conv2d, Conv2d_ReLU_BN, Conv2d_BN_ReLU, Conv2d_ReLU

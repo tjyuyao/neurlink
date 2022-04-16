@@ -4,7 +4,7 @@ from copy import copy
 import itertools
 from dataclasses import dataclass
 from math import prod
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple, Union
 from collections.abc import Sequence
 
 import torch
@@ -184,6 +184,7 @@ class _NerveRegistry:
     def register(self, cls, container_nerve: Nerve, selector, target_dims):
         """produces a pickable dynamic subclass of `cls` born with meta-info available during __init__."""
 
+        #input_selector
         if selector is None:
             input_selector, tag = None, None
         elif isinstance(selector, tuple) and len(selector) == 2:
@@ -243,6 +244,7 @@ class Nerve(torch.nn.Module):
         input_links (List[`NerveSpec`]): [i].
         target_dims (List[`DimSpec`]): [i].
         base_shape  (`Shape`): [f].
+        nerves (List[`NerveSpec`]): [i].
     """
 
     def __new__(
@@ -286,6 +288,9 @@ class Nerve(torch.nn.Module):
 
     def add(self, nndef, tag=None) -> int:
 
+        if isinstance(nndef, list):
+            return [self.add(n) for n in nndef]
+
         if isinstance(nndef, NerveSpec):
             target_dims = nndef.dims
             nerve_builder = nndef.nerve
@@ -296,7 +301,7 @@ class Nerve(torch.nn.Module):
             raise TypeError(f"nndef={repr(nndef)}")
 
         # retrieve actual modules.
-        if nerve_builder.__name__ == "nerve_builder":
+        if getattr(nerve_builder, "__name__", None) == "nerve_builder":
             """
             pass current network and target_dims of next module to add to nerve_builder.
             The nerve_builder will register a new dynamic class in _NerveRegistry so that
@@ -330,10 +335,6 @@ class Nerve(torch.nn.Module):
             # and flexibility. An `nn.Module` will receive the last element in previous sequence as
             # input for `forward` function, while a generic callable will receive the whole cache.
             nerve_object = nerve_builder
-        elif isinstance(nerve_builder, list):
-            for subdef in nerve_builder:
-                self.add(subdef)
-            return
         else:
             raise TypeError(nerve_builder)
 
@@ -459,7 +460,7 @@ class Nerve(torch.nn.Module):
     def __len__(self):
         return len(self.nerves)
 
-    def forward(self, inputs):
+    def forward(self, inputs, output_list=False):
         # fill inputs into cache
         cache = []
         if not isinstance(inputs, list):
@@ -491,7 +492,19 @@ class Nerve(torch.nn.Module):
             else:
                 raise TypeError(module)
             cache.append(output)
-        return cache
+        if output_list:
+            return cache
+        else:
+            return cache[-1]
+
+    def __getattr__(self, name: str) -> Union[torch.Tensor, torch.Module]:
+        try:
+            return super().__getattr__(name)
+        except AttributeError: pass
+        msg = f"'{self.__class__.__name__}' object has no attribute '{name}'. "
+        if name in ["nerves", "input_links", "taget_dims"]:
+            msg += "\n[Nerve] Please make sure call super().__init__() first."
+        raise AttributeError(msg)
 
 
 class Input(Nerve):

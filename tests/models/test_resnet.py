@@ -5,8 +5,8 @@ import neurlink.nerves as nv
 from neurlink.models.resnet import *
 
 
-def test_conv2d_same(expansion=1):
-    block = BasicResBlock(3, expansion=1)
+def test_conv2d_same(expansion=4):
+    block = BottleneckResBlock(3, expansion=expansion)
     net = nv.build([
         ((3, 1), nv.Input()),
         ((64, 2), nv.Conv2d_ReLU_BN(7)),
