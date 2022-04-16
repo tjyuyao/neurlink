@@ -90,7 +90,7 @@ class Shape:
                 return True
         except:
             return False
-
+    
 
 class ShapeSpec:
     def __init__(self, expr) -> None:
@@ -119,7 +119,7 @@ class ShapeSpec:
         else:
             return self.expr == __o
     
-    def get_absolute(self, base_shape: size_any_t):
+    def get_absolute(self, base_shape: size_any_t) -> Shape:
         if self.relative:
             down_scales = Shape(self.relative, repeat_times=len(base_shape))
             abs_shape = []
@@ -244,6 +244,7 @@ class Nerve(torch.nn.Module):
         input_links (List[`NerveSpec`]): [i].
         target_dims (List[`DimSpec`]): [i].
         base_shape  (`Shape`): [f].
+        output_shapes  (List[Tuple[int, ...]]): [f].
         nerves (List[`NerveSpec`]): [i].
     """
 
@@ -281,6 +282,10 @@ class Nerve(torch.nn.Module):
     @property
     def target_dims(self) -> List[DimSpec]:
         return getmeta(self, "target_dims")
+    
+    @property
+    def output_shapes(self) -> List[Shape]:
+        return [t.shape.get_absolute(self.base_shape) for t in self.target_dims]
 
     @property
     def base_shape(self) -> Shape:

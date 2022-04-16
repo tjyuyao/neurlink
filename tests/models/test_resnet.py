@@ -1,26 +1,22 @@
-from numpy import block
-import pytest
 import torch
-import neurlink.nerves as nv
 from neurlink.models.resnet import *
 
 
-def test_conv2d_same(expansion=4):
-    block = BottleneckResBlock(3, expansion=expansion)
-    net = nv.build([
-        ((3, 1), nv.Input()),
-        ((64, 2), nv.Conv2d_ReLU_BN(7)),
-        ((64, 4), nv.MaxPool2d(3)),
-        [((64  * expansion, 4), block)] * 3,
-        [((128  * expansion, 8), block)] * 4,
-        [((256  * expansion, 16), block)] * 6,
-        [((512  * expansion, 32), block)] * 3,
-    ])
-    x = torch.randn((2, 3, 224, 256))
-    x = net(x)
-    import ice
-    ice.print(x)
+def test_resnets_cuda():
+    for net_builder in [resnet18, resnet50, resnext50_32x4d, wide_resnet50_2]:
+        net = net_builder(num_classes=10).cuda()
+        x = torch.randn((2, 3, 64, 64)).cuda()
+        x = net(x)
+        assert x.shape == (2, 10, 1, 1)
 
+
+def test_speed():
+    net = resnet50().cuda()
+    torch.cuda.synchronize()
+    import tqdm
+    for _ in tqdm.trange(100):
+        x = torch.randn((2, 3, 224, 224)).cuda()
+        x = net(x)
 
 if __name__ == "__main__":
-    test_conv2d_same()
+    test_speed()
