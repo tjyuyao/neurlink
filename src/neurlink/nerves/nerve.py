@@ -117,7 +117,21 @@ class ShapeSpec:
             return self.expr == __o.expr
         else:
             return self.expr == __o
+    
+    def get_absolute(self, base_shape: size_any_t):
+        if self.relative:
+            down_scales = Shape(self.relative, repeat_times=len(base_shape))
+            abs_shape = []
+            for base_size, down_scale in zip(base_shape, down_scales):
+                abs_size = self.size(base_size, down_scale)
+                abs_shape.append(abs_size)
+            return Shape(abs_shape)
+        else:
+            return self.absolute
 
+    @staticmethod
+    def size(base_size, down_scale) -> int:
+        return base_size // down_scale + base_size % down_scale
 
 @dataclass
 class DimSpec:
@@ -139,6 +153,24 @@ class DimSpec:
 
 @dataclass
 class NerveSpec:
+    """Internal representation of nndef syntax `(dims=[(channels, shape=(size, ...)), ...], nerve)`
+
+    Example:
+
+    The following specification of "one layer of neural networks" (coined Nerve) in neurlink
+    says a 2d convolution layer with kernel (3, 3) will ensure an output tensor of channels 64
+    and shape resolution of (128, 256). The specification line itself is denoted as a `nndef` 
+    line. Note that the input information is specified in previous lines of nndefs and not 
+    demonstrated here.
+
+    ```python
+    nndef = ((64, "(128, 256)"), nv.Conv2d(3))
+    dims, nerve = nndef[:-1], nndef[-1]
+    for channels, shape in dims:
+        for size in eval(shape):
+            ...
+    ```
+    """
     dims: List[DimSpec]
     nerve: Nerve
 

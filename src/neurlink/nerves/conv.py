@@ -22,10 +22,6 @@ class ConvArithmetic:
     """
 
     @staticmethod
-    def size(base_size, down_scale) -> int:
-        return base_size // down_scale + base_size % down_scale
-
-    @staticmethod
     def padding(i, o, k, d, s) -> int:
         sum_p1_p2 = (d * k + (o - 1) * s - d - i + 1)
         p2 = sum_p1_p2 // 2
@@ -49,6 +45,7 @@ class _AdaptiveConvNd(Nerve):
         spatial_dims: size_any_t,
         kernel_size: size_any_t,
         dilation=1,
+        padding_mode: str = "zeros",
         transposed: bool = False,
     ) -> None:
         super().__init__()
@@ -67,9 +64,10 @@ class _AdaptiveConvNd(Nerve):
         self.kernel_size = self._ntuple(kernel_size)
         self.dilation = self._ntuple(dilation)
         self.stride: Tuple[int] = None
-        self._functional_padding = None
-        self._reversed_padding = None
-        self._output_padding = None
+        self.padding = None
+        self.seperate_padding = None
+        self.output_padding = None
+        self.padding_mode = padding_mode
 
         if not self.default_dims:
             raise NeurlinkAssertionError(
@@ -87,17 +85,6 @@ class _AdaptiveConvNd(Nerve):
         if self._readaptation_warning_flag and self.stride is not None:
             self._readaptation_warning_flag = False
             warnings.warn("`nv.ConvNd` shape adaptation occured multiple times.")
-
-        def convert_to_absolute(shape_spec: ShapeSpec):
-            if shape_spec.relative:
-                down_scales = Shape(shape_spec.relative, repeat_times=self.num_dims)
-                abs_shape = []
-                for base_size, down_scale in zip(base_shape, down_scales):
-                    abs_size = ConvArithmetic.size(base_size, down_scale)
-                    abs_shape.append(abs_size)
-                return Shape(abs_shape)
-            else:
-                return shape_spec.absolute
 
         in_shape = self.input_links.dims[0].shape
         out_shape = self.target_dims[0].shape
@@ -123,8 +110,8 @@ class _AdaptiveConvNd(Nerve):
             self.stride = tuple(stride_tuple)
         # -- absolute case
         else:
-            in_shape = convert_to_absolute(in_shape)
-            out_shape = convert_to_absolute(out_shape)
+            in_shape = in_shape.get_absolute(base_shape)
+            out_shape = out_shape.get_absolute(base_shape)
 
             stride_tuple = []
             for in_size, out_size in zip(in_shape, out_shape):
@@ -151,10 +138,8 @@ class _AdaptiveConvNd(Nerve):
             self.stride = tuple(stride_tuple)
 
         # populate self.padding
-        in_shape = self.input_links.dims[0].shape
-        out_shape = self.target_dims[0].shape
-        in_shape = convert_to_absolute(in_shape)
-        out_shape = convert_to_absolute(out_shape)
+        in_shape = self.input_links.dims[0].shape.get_absolute(base_shape)
+        out_shape = self.target_dims[0].shape.get_absolute(base_shape)
 
         padding_tuple = []
         output_padding_tuple = []
@@ -169,23 +154,25 @@ class _AdaptiveConvNd(Nerve):
             padding_tuple.append(p)
             output_padding_tuple.append(a)
         padding_tuple = tuple(padding_tuple)
-        self._output_padding = tuple(output_padding_tuple)
-        self._reversed_padding = tuple(x for p in reversed(padding_tuple) for x in p)
-        self._seperate_pad = False
+        self.output_padding = tuple(output_padding_tuple)
+        self.seperate_padding = tuple(x for p in reversed(padding_tuple) for x in p)
+        self.seperate_pad_flag = False
         if self.padding_mode == "zeros":
             for p1, p2 in padding_tuple:
                 if p1 != p2:
-                    self._seperate_pad = True
+                    self.seperate_pad_flag = True
                     self.padding_mode = "constant"
         else:
-            self._seperate_pad = True
-        if self._seperate_pad:
-            self._functional_padding = self._ntuple(0)
+            self.seperate_pad_flag = True
+        if self.seperate_pad_flag:
+            self.padding = self._ntuple(0)
         else:
-            self._functional_padding = tuple(p for p, _ in padding_tuple)
+            self.padding = tuple(p for p, _ in padding_tuple)
 
     def __call__(self, x):
         self._adapt_to_base_shape()
+        if self.seperate_pad_flag:
+            x = F.pad(x, self.seperate_padding, mode=self.padding_mode)
         return self.forward(x)
 
     def forward(self, inputs):
@@ -208,7 +195,7 @@ class _ConvNd(_AdaptiveConvNd):
         dtype=None,
         spatial_dims=None,
     ):
-        super().__init__(spatial_dims, kernel_size, dilation, transposed)
+        super().__init__(spatial_dims, kernel_size, dilation, padding_mode, transposed)
 
         N = self.num_dims
 
@@ -240,7 +227,6 @@ class _ConvNd(_AdaptiveConvNd):
         in_channels = self.input_links.dims[0].channels
         out_channels = self.target_dims[0].channels
         kernel_size = self.kernel_size
-        self.padding_mode = padding_mode
         self.groups = groups
 
         if in_channels % groups != 0:
@@ -295,17 +281,14 @@ class _ConvNd(_AdaptiveConvNd):
             nn.init.uniform_(self.bias, -bound, bound)
 
     def conv(self, x):
-        if self._seperate_pad:
-            x = F.pad(x, self._reversed_padding, mode=self.padding_mode)
-
         if self.transposed:
             return self.functional_conv(
                 x,
                 self.weight,
                 self.bias,
                 self.stride,
-                self._functional_padding,
-                self._output_padding,
+                self.padding,
+                self.output_padding,
                 self.groups,
                 self.dilation,
             )
@@ -315,7 +298,7 @@ class _ConvNd(_AdaptiveConvNd):
                 self.weight,
                 self.bias,
                 self.stride,
-                self._functional_padding,
+                self.padding,
                 self.dilation,
                 self.groups,
             )
@@ -329,31 +312,31 @@ class _ConvNd(_AdaptiveConvNd):
 # fmt: off
 
 Conv1d:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.Identity, act=nn.Identity)
-Conv1dReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.Identity, act=nn.ReLU)
-Conv1dBNReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.BatchNorm1d, act=nn.ReLU, norm_after_act=False)
-Conv1dReLUBN:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.BatchNorm1d, act=nn.ReLU, norm_after_act=True)
+Conv1d_ReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.Identity, act=nn.ReLU)
+Conv1d_BN_ReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.BatchNorm1d, act=nn.ReLU, norm_after_act=False)
+Conv1d_ReLU_BN:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.BatchNorm1d, act=nn.ReLU, norm_after_act=True)
 
 Conv2d:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.Identity, act=nn.Identity)
-Conv2dReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.Identity, act=nn.ReLU)
-Conv2dBNReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=False)
-Conv2dReLUBN:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=True)
+Conv2d_ReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.Identity, act=nn.ReLU)
+Conv2d_BN_ReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=False)
+Conv2d_ReLU_BN:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=True)
 
 Conv3d:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.Identity, act=nn.Identity)
-Conv3dReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.Identity, act=nn.ReLU)
-Conv3dBNReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=False)
-Conv3dReLUBN:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=True)
+Conv3d_ReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.Identity, act=nn.ReLU)
+Conv3d_BN_ReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=False)
+Conv3d_ReLU_BN:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=True)
 
 ConvTransposed1d:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.Identity, act=nn.Identity, transposed=True)
-ConvTransposed1dReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.Identity, act=nn.ReLU, transposed=True)
-ConvTransposed1dBNReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.BatchNorm1d, act=nn.ReLU, norm_after_act=False, transposed=True)
-ConvTransposed1dReLUBN:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.BatchNorm1d, act=nn.ReLU, norm_after_act=True, transposed=True)
+ConvTransposed1d_ReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.Identity, act=nn.ReLU, transposed=True)
+ConvTransposed1d_BN_ReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.BatchNorm1d, act=nn.ReLU, norm_after_act=False, transposed=True)
+ConvTransposed1d_ReLU_BN:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-1,), norm=nn.BatchNorm1d, act=nn.ReLU, norm_after_act=True, transposed=True)
 
 ConvTransposed2d:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.Identity, act=nn.Identity, transposed=True)
-ConvTransposed2dReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.Identity, act=nn.ReLU, transposed=True)
-ConvTransposed2dBNReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=False, transposed=True)
-ConvTransposed2dReLUBN:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=True, transposed=True)
+ConvTransposed2d_ReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.Identity, act=nn.ReLU, transposed=True)
+ConvTransposed2d_BN_ReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=False, transposed=True)
+ConvTransposed2d_ReLU_BN:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=True, transposed=True)
 
 ConvTransposed3d:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.Identity, act=nn.Identity, transposed=True)
-ConvTransposed3dReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.Identity, act=nn.ReLU, transposed=True)
-ConvTransposed3dBNReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=False, transposed=True)
-ConvTransposed3dReLUBN:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=True, transposed=True)
+ConvTransposed3d_ReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.Identity, act=nn.ReLU, transposed=True)
+ConvTransposed3d_BN_ReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=False, transposed=True)
+ConvTransposed3d_ReLU_BN:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=True, transposed=True)
