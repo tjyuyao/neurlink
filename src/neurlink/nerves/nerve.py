@@ -4,7 +4,8 @@ from copy import copy
 import itertools
 from dataclasses import dataclass
 from math import prod
-from typing import Callable, Dict, List, Sequence, Tuple
+from typing import Callable, Dict, List, Tuple
+from collections.abc import Sequence
 
 import torch
 from typing_extensions import Self
@@ -189,7 +190,7 @@ class _NerveRegistry:
             input_selector, tag = selector
         elif isinstance(selector, str) and selector not in container_nerve:
             input_selector, tag = None, selector
-        elif isinstance(selector, (int, str, slice)):
+        elif isinstance(selector, (int, str, slice, Sequence)):
             input_selector, tag = selector, None
         else:
             raise NeurlinkAssertionError(f"TypeError(selector={selector})")
@@ -283,10 +284,16 @@ class Nerve(torch.nn.Module):
     def base_shape(self) -> Shape:
         return self._ensure_inputs.base_input_nerve.shape
 
-    def add(self, nndef, tag=None):
+    def add(self, nndef, tag=None) -> int:
 
-        target_dims, nerve_builder = nndef[:-1], nndef[-1]
-        target_dims = [DimSpec(c, ShapeSpec(s)) for c, s in target_dims]
+        if isinstance(nndef, NerveSpec):
+            target_dims = nndef.dims
+            nerve_builder = nndef.nerve
+        elif isinstance(nndef, tuple):
+            target_dims, nerve_builder = nndef[:-1], nndef[-1]
+            target_dims = [DimSpec(c, ShapeSpec(s)) for c, s in target_dims]
+        else:
+            raise TypeError(f"nndef={repr(nndef)}")
 
         # retrieve actual modules.
         if nerve_builder.__name__ == "nerve_builder":
@@ -331,12 +338,13 @@ class Nerve(torch.nn.Module):
             raise TypeError(nerve_builder)
 
         # register each module for later lookup.
-        idx = len(self.node_sequence)
+        idx = len(self.nerves)
         tag = tag if tag is not None else str(idx)
-        self.node_sequence.append(NerveSpec(target_dims, nerve_object))
-        self.tag2idx[tag] = idx
-        self.module_dict[tag] = nerve_object
+        self.nerves.append(NerveSpec(target_dims, nerve_object))
+        self._tag2idx[tag] = idx
+        self._module_dict[tag] = nerve_object
         self._ensure_inputs(nerve_object)
+        return idx
 
     class _EnsureInputBaseShape:
         """Ensure an Input as base_shape reference; as well as propagating input_links to sub-nerve.
@@ -356,6 +364,7 @@ class Nerve(torch.nn.Module):
 
         Attributes:
             base_input_nerve (Input): the base_shape provider Input.
+            nerves (List[`NerveSpec`]): ...
         """
 
         def __init__(self, nerve: Nerve) -> None:
@@ -396,9 +405,9 @@ class Nerve(torch.nn.Module):
 
     def __init__(self, *args, _Nerve__finalized=False, **kwds) -> None:
         super().__init__()
-        self.node_sequence: List[NerveSpec] = []
-        self.tag2idx: Dict[str, int] = {}
-        self.module_dict = torch.nn.ModuleDict()
+        self.nerves: List[NerveSpec] = []
+        self._tag2idx: Dict[str, int] = {}
+        self._module_dict = torch.nn.ModuleDict()
         self._ensure_inputs = Nerve._EnsureInputBaseShape(self)
 
         # input propagation through hierarchy
@@ -417,13 +426,13 @@ class Nerve(torch.nn.Module):
         elif isinstance(index, int):
             return sequence[index]
         elif isinstance(index, str):
-            return sequence[self.tag2idx[index]]
+            return sequence[self._tag2idx[index]]
         elif isinstance(index, slice):
             args = dict(start=None, stop=None, step=None)
             for attrname in ("start", "stop", "step"):
                 attrvalue = getattr(index, attrname)
                 if isinstance(attrvalue, str):
-                    args[attrname] = self.tag2idx[attrvalue]
+                    args[attrname] = self._tag2idx[attrvalue]
                 else:
                     args[attrname] = attrvalue
             new_index = slice(args["start"], args["stop"], args["step"])
@@ -436,19 +445,19 @@ class Nerve(torch.nn.Module):
             raise TypeError(f"invalid input range {index} of type {type(index)}")
 
     def __getitem__(self, index):
-        return self._get_sequence_item(self.node_sequence, index)
+        return self._get_sequence_item(self.nerves, index)
 
     def __contains__(self, index):
         if isinstance(index, (str, int)):
             try:
-                self._get_sequence_item(self.node_sequence, index)
+                self._get_sequence_item(self.nerves, index)
                 return True
             except KeyError:
                 return False
         return False
 
     def __len__(self):
-        return len(self.node_sequence)
+        return len(self.nerves)
 
     def forward(self, inputs):
         # fill inputs into cache
@@ -456,7 +465,7 @@ class Nerve(torch.nn.Module):
         if not isinstance(inputs, list):
             inputs = [inputs]
         # forward
-        for idx, node in enumerate(self.node_sequence):
+        for idx, node in enumerate(self.nerves):
             module = node.nerve
             if isinstance(module, Input):
                 try:
