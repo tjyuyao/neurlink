@@ -10,10 +10,10 @@ import torch
 from .common_types import NeurlinkAssertionError, size_any_t
 from .nerve import Nerve, Shape, ShapeSpec
 from .utils import expect_int, ntuple, specialize
-from .conv import _AdaptiveConvNd
+from .conv import AdaptiveConvNd
 
 
-class _MaxPoolNd(_AdaptiveConvNd):
+class _MaxPoolNd(AdaptiveConvNd):
     def __init__(
         self,
         kernel_size: size_any_t=None,

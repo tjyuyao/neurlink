@@ -39,7 +39,23 @@ class ConvArithmetic:
         return math.ceil(larger_size / smaller_size)
 
 
-class _AdaptiveConvNd(Nerve):
+class AdaptiveConvNd(Nerve):
+    """Automatically determine stride and padding at runtime.
+
+    Attributes:
+        kernel_size (Tuple[int, ...]): [i].
+        dilation (Tuple[int, ...]): [i].
+        spatial_dims (Tuple[int, ...]): [i].
+        num_dims (int): [i].
+        default_dims (bool): [i].
+        transposed (bool): [i].
+        stride (Tuple[int, ...]): [f].
+        padding (Tuple[int, ...]): [f].
+        seperate_padding (Tuple[Tuple[int, int], ...]): [f].
+        output_padding (_type_): [f] only for transposed conv.
+    """
+
+
     def __init__(
         self,
         spatial_dims: size_any_t,
@@ -86,7 +102,7 @@ class _AdaptiveConvNd(Nerve):
             self._readaptation_warning_flag = False
             warnings.warn("`nv.ConvNd` shape adaptation occured multiple times.")
 
-        in_shape = self.input_links.dims[0].shape
+        in_shape = self.input_links[0].dims[0].shape
         out_shape = self.target_dims[0].shape
 
         # populate self.stride
@@ -138,7 +154,7 @@ class _AdaptiveConvNd(Nerve):
             self.stride = tuple(stride_tuple)
 
         # populate self.padding
-        in_shape = self.input_links.dims[0].shape.get_absolute(base_shape)
+        in_shape = self.input_links[0].dims[0].shape.get_absolute(base_shape)
         out_shape = self.target_dims[0].shape.get_absolute(base_shape)
 
         padding_tuple = []
@@ -171,6 +187,7 @@ class _AdaptiveConvNd(Nerve):
 
     def __call__(self, x):
         self._adapt_to_base_shape()
+        x = x[0]
         if self.seperate_pad_flag:
             x = F.pad(x, self.seperate_padding, mode=self.padding_mode)
         return self.forward(x)
@@ -179,7 +196,7 @@ class _AdaptiveConvNd(Nerve):
         raise NotImplementedError()
 
 
-class _ConvNd(_AdaptiveConvNd):
+class _ConvNd(AdaptiveConvNd):
     def __init__(
         self,
         kernel_size,
@@ -224,7 +241,7 @@ class _ConvNd(_AdaptiveConvNd):
                     f"nv.ConvNd(spatial_dims={spatial_dims}, transposed={transposed})"
                 )
 
-        in_channels = self.input_links.dims[0].channels
+        in_channels = self.input_links[0].dims[0].channels
         out_channels = self.target_dims[0].channels
         kernel_size = self.kernel_size
         self.groups = groups

@@ -193,6 +193,9 @@ class _NerveRegistry:
             input_selector, tag = selector, None
         else:
             raise NeurlinkAssertionError(f"TypeError(selector={selector})")
+        
+        if isinstance(input_selector, (int, str)):
+            input_selector = [input_selector]
 
         ntypename = f"{cls.__name__}{len(self.registry)}"
 
@@ -233,7 +236,13 @@ _NB = _NerveRegistry("_NB")
 
 
 class Nerve(torch.nn.Module):
-    """Base class to support input selection syntax (Typename[slice, name])."""
+    """Base class to support input selection syntax (Typename[slice, name]).
+    
+    Attributes:
+        input_links (List[`NerveSpec`]): [i].
+        target_dims (List[`DimSpec`]): [i].
+        base_shape  (`Shape`): [f].
+    """
 
     def __new__(
         cls: type[Self], *args, _Nerve__finalized=False, **kwds
@@ -263,7 +272,7 @@ class Nerve(torch.nn.Module):
         return parameter_keeper
 
     @property
-    def input_links(self) -> NerveSpec | List[NerveSpec]:
+    def input_links(self) -> List[NerveSpec]:
         return getmeta(self, "input_links")
 
     @property
