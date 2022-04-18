@@ -2,39 +2,6 @@ import neurlink.nerves as nv
 import neurlink.nn as nn
 
 
-class SkipConnect(nv.Nerve):
-    """
-    SkipConnect[[from, to]](...)
-    """
-
-    def __init__(
-        self,
-        kernel_size=1,
-        norm=nn.BatchNorm2d,
-        act=nn.Identity,
-        **conv_keywords,
-    ):
-        super().__init__()
-        dim_from = self.input_links[0].dims[0]
-        dim_to = self.input_links[1].dims[0]
-        dim_out = self.target_dims[0]
-
-        assert dim_out == dim_to
-
-        if dim_from != dim_to:
-            self.add(
-                (dim_to, nv.Conv2d[0](kernel_size, norm=norm, act=act, **conv_keywords))
-            )
-
-    def forward(self, inputs, output_intermediate=False):
-        cache = super().forward(inputs, output_list=True)
-        cache.append(cache[-1] + cache[-2])
-        if output_intermediate:
-            return cache
-        else:
-            return cache[-1]
-
-
 class BasicBlock(nv.Nerve):
     def __init__(
         self,
@@ -59,7 +26,7 @@ class BasicBlock(nv.Nerve):
             [
                 (hid_dims, nv.Conv2d(3, act=act, **conv_keywords)),
                 (dim_out, nv.Conv2d(3, act=nn.I, **conv_keywords)),
-                (dim_out, SkipConnect[[0, -1]](1, norm=norm)),
+                (dim_out, nv.SkipConnect2d[[0, -1]](1, norm=norm)),
                 (dim_out, act(inplace=True)),
             ]
         )
@@ -92,7 +59,7 @@ class Bottleneck(nv.Nerve):
                 ((hid_channels, dim_in.shape), nv.Conv2d(1, act=act, **conv_keywords)),
                 ((hid_channels, dim_out.shape), nv.Conv2d(3, act=act, **conv_keywords)),
                 ((out_channels, dim_out.shape), nv.Conv2d(1, act=nn.I, **conv_keywords)),
-                ((out_channels, dim_out.shape), SkipConnect[[0, -1]](1, norm=norm)),
+                ((out_channels, dim_out.shape), nv.SkipConnect2d[[0, -1]](1, norm=norm)),
                 ((out_channels, dim_out.shape), act(inplace=True)),
             ]
         )

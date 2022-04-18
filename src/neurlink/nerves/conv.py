@@ -184,12 +184,17 @@ class AdaptiveConvNd(Nerve):
         else:
             self.padding = tuple(p for p, _ in padding_tuple)
 
-    def __call__(self, x):
+    def __call__(self, x, output_intermediate=False):
+        if isinstance(x, list):
+            x = x[0]
         self._adapt_to_base_shape()
-        x = x[0]
         if self.seperate_pad_flag:
             x = F.pad(x, self.seperate_padding, mode=self.padding_mode)
-        return self.forward(x)
+        cache = self.forward(x)
+        if not output_intermediate and isinstance(cache, list):
+            return cache[-1]
+        else:
+            return cache
 
     def forward(self, inputs):
         raise NotImplementedError()
@@ -364,3 +369,45 @@ ConvTransposed3d:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,),
 ConvTransposed3d_ReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.Identity, act=nn.ReLU, transposed=True)
 ConvTransposed3d_BN_ReLU:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=False, transposed=True)
 ConvTransposed3d_ReLU_BN:Type[_ConvNd] = specialize(_ConvNd, spatial_dims=(-3, -2, -1,), norm=nn.BatchNorm2d, act=nn.ReLU, norm_after_act=True, transposed=True)
+
+# fmt: on
+
+
+class _SkipConnectNd(Nerve):
+    """
+    SkipConnect[[from, to]](...)
+    """
+
+    def __init__(
+        self,
+        kernel_size=1,
+        norm=nn.Identity,
+        act=nn.Identity,
+        spatial_dims: size_any_t=None,
+        **conv_keywords,
+    ):
+        super().__init__()
+        dim_from = self.input_links[0].dims[0]
+        dim_to = self.input_links[1].dims[0]
+        dim_out = self.target_dims[0]
+
+        assert dim_out == dim_to
+
+        if dim_from != dim_to:
+            conv_keywords.update(norm=norm, act=act, spatial_dims=spatial_dims)
+            conv_keywords["transposed"] = dim_from.shape < dim_to.shape
+            self.add((dim_to, _ConvNd[0](kernel_size, **conv_keywords)))
+
+    def forward(self, inputs):
+        cache = super().forward(inputs)
+        cache.append(cache[-1] + cache[-2])
+        return cache
+
+
+# fmt:off
+
+SkipConnect1d: Type[_SkipConnectNd] = specialize(_SkipConnectNd, spatial_dims=(-1,))
+SkipConnect2d: Type[_SkipConnectNd] = specialize(_SkipConnectNd, spatial_dims=(-2, -1))
+SkipConnect3d: Type[_SkipConnectNd] = specialize(_SkipConnectNd, spatial_dims=(-3, -2, -1))
+
+# fmt: on

@@ -1,5 +1,6 @@
 from __future__ import annotations
 from copy import copy
+from functools import partial, wraps
 
 import itertools
 from dataclasses import dataclass
@@ -10,9 +11,9 @@ from collections.abc import Sequence
 import torch
 from typing_extensions import Self
 
-from neurlink.nerves.utils import is_sequence_of, isint
+from neurlink.nerves.utils import all_type, is_sequence_of, isint, reprable
 
-from .common_types import NeurlinkAssertionError, size_any_t
+from .common_types import NNDefParserError, NeurlinkAssertionError, size_any_t
 
 
 class NotEnoughInputError(Exception):
@@ -48,7 +49,7 @@ def setmetadefault(obj, key, default):
         setmeta(obj, key, default)
 
 
-class Shape:
+class Shape(Sequence):
     def __init__(
         self, size_tuple: int | Tuple[int, ...] | torch.Size, repeat_times=1
     ) -> None:
@@ -93,6 +94,9 @@ class Shape:
 
 
 class ShapeSpec:
+
+    class NotComparableError(Exception): pass
+
     def __init__(self, expr) -> None:
         if isinstance(expr, ShapeSpec):
             other = expr
@@ -118,6 +122,15 @@ class ShapeSpec:
             return self.expr == __o.expr
         else:
             return self.expr == __o
+    
+    def __lt__(self, __o: ShapeSpec) -> bool:
+        if not isinstance(__o, ShapeSpec):
+            raise ShapeSpec.NotComparableError(f"{repr(__o)} is not a ShapeSpec type")
+        if all_type((self.expr, __o.expr), int):
+            # since int is the downsample ratio, less downsample means larger shape.
+            return self.expr > __o.expr
+        else:
+            raise NotImplementedError
 
     def get_absolute(self, base_shape: size_any_t) -> Shape:
         if self.relative:
@@ -192,7 +205,7 @@ class _NerveRegistry:
         elif isinstance(selector, tuple) and len(selector) == 2:
             input_selector, tag = selector
         elif isinstance(selector, str) and selector not in container_nerve:
-            input_selector, tag = None, selector
+            input_selector, tag = -1, selector
         elif isinstance(selector, (int, str, slice, Sequence)):
             input_selector, tag = selector, None
         else:
@@ -257,9 +270,17 @@ class Nerve(torch.nn.Module):
             return super().__new__(cls)
         else:
             return cls[-1](*args, **kwds)
+    
+    def __reduce__(self):
+        if self.__class__ is Nerve:
+            return (partial(Nerve, _Nerve__finalized=True), (), self.__dict__)
+        else:
+            return super().__reduce__()
 
     def __class_getitem__(cls, selector):  # input_selector call
         def parameter_keeper(*args, **kwds):  # constructor call
+
+            # print(cls, args, kwds)
 
             # finalize call
             def nerve_builder(container_nerve: Nerve, target_dims):
@@ -268,9 +289,12 @@ class Nerve(torch.nn.Module):
                 )
                 # dynamic class is also a subclass of Nerve,
                 # `_Nerve__finalized=True` will ensure a real instantiation.
-                nerve_object = nerve_dynamic_class(
-                    *args, _Nerve__finalized=True, **kwds
-                )
+                try:
+                    nerve_object = nerve_dynamic_class(
+                        *args, _Nerve__finalized=True, **kwds
+                    )
+                except Exception as e:
+                    raise NNDefParserError(nerve_dynamic_class, e)
                 return nerve_object
 
             return nerve_builder
@@ -336,7 +360,7 @@ class Nerve(torch.nn.Module):
             """
             nerve_object = nerve_builder(self, target_dims)
             tag = getmeta(nerve_object, "tag") or tag
-        elif isinstance(nerve_builder, (torch.nn.Module, Callable)):
+        elif isinstance(nerve_builder, (torch.nn.Module)):
             # support to `nn.Module` and generic callable is an experimental feature and currently
             # not recommended for production code. But this is an option for maximum compatibility.
             # and flexibility. An `nn.Module` will receive the last element in previous sequence as
@@ -467,12 +491,17 @@ class Nerve(torch.nn.Module):
     def __len__(self):
         return len(self.nerves)
 
-    def forward(self, inputs, output_list=False):
-        # fill inputs into cache
-        cache = []
+    def __call__(self, inputs, output_intermediate=False):
         if not isinstance(inputs, list):
             inputs = [inputs]
-        # forward
+        cache = self.forward(inputs)
+        if not output_intermediate and isinstance(cache, list) and len(cache):
+            return cache[-1]
+        else:
+            return cache
+
+    def forward(self, inputs:List):
+        cache = []
         for idx, node in enumerate(self.nerves):
             module = node.nerve
             if isinstance(module, Input):
@@ -499,10 +528,7 @@ class Nerve(torch.nn.Module):
             else:
                 raise TypeError(module)
             cache.append(output)
-        if output_list:
-            return cache
-        else:
-            return cache[-1]
+        return cache
 
     def __getattr__(self, name: str) -> Union[torch.Tensor, torch.Module]:
         try:

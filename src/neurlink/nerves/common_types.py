@@ -51,3 +51,6 @@ class NeurlinkAssertionError(Exception):
             *args,
         )
         super().__init__(*args)
+
+
+class NNDefParserError(Exception): ...

@@ -1,5 +1,5 @@
 import collections
-from functools import partial
+from functools import partial, update_wrapper
 from itertools import repeat
 from typing import Callable, List, Dict, Any
 from typing_extensions import Self
@@ -69,7 +69,6 @@ def consume_prefix_in_state_dict_if_present(
             newkey = key[len(prefix) :]
             metadata[newkey] = metadata.pop(key)
 
-
 def isint(x):
     if isinstance(x, int):
         return True
@@ -90,7 +89,36 @@ def is_sequence_of(seq, types):
             return False
     return True
 
+all_type = is_sequence_of
+
+def all_sequence_of(seq, types):
+    for x in seq:
+        if not is_sequence_of(x, types):
+            return False
+    return True
 
 class specialize(partial):
     def __getitem__(self, key):
         return specialize(self.func[key], *self.args, **self.keywords)
+
+
+class _reprable:
+    """Decorates a function with a repr method."""
+
+    def __init__(self, wrapped, custom_repr):
+        self._wrapped = wrapped
+        self.custom_repr = custom_repr
+        update_wrapper(self, wrapped)
+
+    def __call__(self, *args, **kwargs):
+        return self._wrapped(*args, **kwargs)
+
+    def __repr__(self):
+        return self.custom_repr
+
+
+def reprable(custom_repr:str):
+    """Decorates a function with a repr method."""
+    def decorator(f):
+        return _reprable(f, custom_repr)
+    return decorator
