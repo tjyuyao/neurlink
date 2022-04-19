@@ -10,4 +10,4 @@ from .conv import ConvTransposed3d, ConvTransposed3d_ReLU_BN, ConvTransposed3d_B
 from .conv import SkipConnect1d, SkipConnect2d, SkipConnect3d
 from .pool import MaxPool1d, MaxPool2d, MaxPool3d
 from .pool import AvgPool1d, AvgPool2d, AvgPool3d
-from .misc import Identity, Add
+from .misc import Interpolate, Identity, Add

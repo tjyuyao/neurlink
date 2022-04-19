@@ -122,3 +122,8 @@ def reprable(custom_repr:str):
     def decorator(f):
         return _reprable(f, custom_repr)
     return decorator
+
+def format_args_kwds(*args, **kwds):
+    fmt_args = ', '.join([repr(x) for x in args])
+    fmt_kwds = ', '.join([f"{k}={repr(v)}" for k, v in kwds.items()])
+    return ', '.join([x for x in (fmt_args, fmt_kwds) if x])

@@ -1,7 +1,9 @@
 from __future__ import annotations
 from copy import copy
 from functools import partial, wraps
+import sys
 
+import traceback
 import itertools
 from dataclasses import dataclass
 from math import prod
@@ -11,9 +13,9 @@ from collections.abc import Sequence
 import torch
 from typing_extensions import Self
 
-from neurlink.nerves.utils import all_type, is_sequence_of, isint, reprable
+from neurlink.nerves.utils import all_type, format_args_kwds, is_sequence_of, isint, reprable
 
-from .common_types import NNDefParserError, NeurlinkAssertionError, size_any_t
+from .common_types import NNDefParserError, NeurlinkAssertionError, NeurlinkForwardError, size_any_t
 
 
 class NotEnoughInputError(Exception):
@@ -280,9 +282,8 @@ class Nerve(torch.nn.Module):
     def __class_getitem__(cls, selector):  # input_selector call
         def parameter_keeper(*args, **kwds):  # constructor call
 
-            # print(cls, args, kwds)
-
             # finalize call
+            @reprable(f"{cls.__name__}[{repr(selector)}]()")
             def nerve_builder(container_nerve: Nerve, target_dims):
                 nerve_dynamic_class = _NB.register(
                     cls, container_nerve, selector, target_dims
@@ -293,8 +294,9 @@ class Nerve(torch.nn.Module):
                     nerve_object = nerve_dynamic_class(
                         *args, _Nerve__finalized=True, **kwds
                     )
-                except Exception as e:
-                    raise NNDefParserError(nerve_dynamic_class, e)
+                except Exception:
+                    print(NNDefParserError(f"{cls.__name__}[{repr(selector)}]()"), file=sys.stderr)
+                    raise
                 return nerve_object
 
             return nerve_builder
@@ -373,6 +375,7 @@ class Nerve(torch.nn.Module):
         idx = len(self.nerves)
         tag = tag if tag is not None else str(idx)
         self.nerves.append(NerveSpec(target_dims, nerve_object))
+        self._nndef.append(nndef)
         self._tag2idx[tag] = idx
         self._module_dict[tag] = nerve_object
         self._ensure_inputs(nerve_object)
@@ -438,6 +441,7 @@ class Nerve(torch.nn.Module):
     def __init__(self, *args, _Nerve__finalized=False, **kwds) -> None:
         super().__init__()
         self.nerves: List[NerveSpec] = []
+        self._nndef: List[NerveSpec] = []
         self._tag2idx: Dict[str, int] = {}
         self._module_dict = torch.nn.ModuleDict()
         self._ensure_inputs = Nerve._EnsureInputBaseShape(self)
@@ -503,30 +507,34 @@ class Nerve(torch.nn.Module):
     def forward(self, inputs:List):
         cache = []
         for idx, node in enumerate(self.nerves):
-            module = node.nerve
-            if isinstance(module, Input):
-                try:
-                    output = inputs[idx]
-                except IndexError:
-                    raise NotEnoughInputError(
-                        f"while extracting {idx}-th (zero-based) Input."
-                    )
-                # populate Input.shape at runtime
-                if module.base_shape_flag:
-                    if isinstance(output, torch.Tensor):
-                        module.shape = Shape(output.shape)
-                    else:
-                        raise TypeError(type(output))
-            elif isinstance(module, Nerve):
-                cache_selector = module._neurlink_meta_["input_selector"]
-                cache_selected = self._get_sequence_item(cache, cache_selector)
-                output = module(cache_selected)
-            elif isinstance(module, torch.nn.Module):
-                output = module(cache[-1])
-            elif isinstance(module, Callable):
-                output = module(cache)
-            else:
-                raise TypeError(module)
+            try:
+                module = node.nerve
+                if isinstance(module, Input):
+                    try:
+                        output = inputs[idx]
+                    except IndexError:
+                        raise NotEnoughInputError(
+                            f"while extracting {idx}-th (zero-based) Input."
+                        )
+                    # populate Input.shape at runtime
+                    if module.base_shape_flag:
+                        if isinstance(output, torch.Tensor):
+                            module.shape = Shape(output.shape)
+                        else:
+                            raise TypeError(type(output))
+                elif isinstance(module, Nerve):
+                    cache_selector = module._neurlink_meta_["input_selector"]
+                    cache_selected = self._get_sequence_item(cache, cache_selector)
+                    output = module(cache_selected)
+                elif isinstance(module, torch.nn.Module):
+                    output = module(cache[-1])
+                elif isinstance(module, Callable):
+                    output = module(cache)
+                else:
+                    raise TypeError(module)
+            except Exception:
+                print(NeurlinkForwardError(repr(self._nndef[idx])), file=sys.stderr)
+                raise
             cache.append(output)
         return cache
 

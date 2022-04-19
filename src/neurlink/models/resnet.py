@@ -5,12 +5,14 @@ import neurlink.nn as nn
 class BasicBlock(nv.Nerve):
     def __init__(
         self,
+        kernel_size=3,
         width=1.0,
         groups=1,
         norm=nn.BatchNorm2d,
         act=nn.ReLU,
         norm_after_act=True,
         expansion=1,
+        transposed=False,
     ):
         super().__init__()
 
@@ -24,8 +26,8 @@ class BasicBlock(nv.Nerve):
 
         self.add(
             [
-                (hid_dims, nv.Conv2d(3, act=act, **conv_keywords)),
-                (dim_out, nv.Conv2d(3, act=nn.I, **conv_keywords)),
+                (hid_dims, nv.Conv2d(kernel_size, act=act, transposed=transposed, **conv_keywords)),
+                (dim_out, nv.Conv2d(kernel_size, act=nn.I, **conv_keywords)),
                 (dim_out, nv.SkipConnect2d[[0, -1]](1, norm=norm)),
                 (dim_out, act(inplace=True)),
             ]
@@ -35,12 +37,14 @@ class BasicBlock(nv.Nerve):
 class Bottleneck(nv.Nerve):
     def __init__(
         self,
+        kernel_size=3,
         width=1.0,
         groups=1,
         norm=nn.BatchNorm2d,
         act=nn.ReLU,
         norm_after_act=True,
         expansion=4,
+        transposed=False,
     ):
         super().__init__()
 
@@ -57,7 +61,7 @@ class Bottleneck(nv.Nerve):
         self.add(
             [
                 ((hid_channels, dim_in.shape), nv.Conv2d(1, act=act, **conv_keywords)),
-                ((hid_channels, dim_out.shape), nv.Conv2d(3, act=act, **conv_keywords)),
+                ((hid_channels, dim_out.shape), nv.Conv2d(kernel_size, act=act, transposed=transposed, **conv_keywords)),
                 ((out_channels, dim_out.shape), nv.Conv2d(1, act=nn.I, **conv_keywords)),
                 ((out_channels, dim_out.shape), nv.SkipConnect2d[[0, -1]](1, norm=norm)),
                 ((out_channels, dim_out.shape), act(inplace=True)),

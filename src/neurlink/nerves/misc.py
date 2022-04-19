@@ -15,10 +15,12 @@ class Interpolate(Nerve):
         #     ``'trilinear'`` | ``'area'`` | ``'nearest-exact'``. Default: ``'nearest'``
         self.mode = mode
 
+        assert self.input_links[0].dims[0].channels == self.target_dims[0].channels
+
     def forward(self, inputs):
         if self.size_cached is None:
-            self.size_cached = self.output_shapes[0]
-        return F.interpolate(inputs[0], self.size_cached, mode=self.mode)
+            self.size_cached = tuple(self.output_shapes[0][2:])
+        return F.interpolate(inputs[0], self.size_cached, mode=self.mode, align_corners=False)
 
 
 class Identity(Nerve):

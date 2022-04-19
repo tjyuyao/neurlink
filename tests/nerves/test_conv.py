@@ -81,7 +81,7 @@ def test_conv2d_transposed_odd():
     assert x[2].shape == (2, 8, 224+1, 256+1)
 
 def test_conv2d_transposed_nonzero_padding():
-    with pytest.raises(NNDefParserError):
+    with pytest.raises(ValueError):
         nv.build([
             ((3, 1), nv.Input()),
             ((6, 2), Conv2d(3)),
